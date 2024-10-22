@@ -174,6 +174,121 @@ def plot_windowed_results(
         plt.savefig(figure_path + figure_name)
 
 
+def plot_windowed_results_multiple_metrics(
+    results: dict[str, PrequentialResults],
+    metrics: list[str],
+    plot_titles: str = None,
+    xlabel: str = None,
+    ylabels: list[str] = None,
+    nb_subplots_cols: int = 2,
+    marker: str = "o",
+    markersize: int = 3,
+    linestyle: str = "-",
+    lindewidth: int = 1,
+) -> plt:
+    """
+    Plot a comparison of values from multiple evaluators based on a selected 
+    column using line plots. Display each provided metric in a separate plot.
+    It assumes the results contain windowed results ('windowed') which often 
+    originate from metrics_per_window() and the learner identification 
+    ('learner').
+
+    Parameters
+    ----------
+    results : dict[learner_name, PrequentialResults]
+        The results to plot.
+    metrics : list[str]
+        The metrics to plot spearately, from the available metrics in the results.
+    plot_titles : list[str], optional
+        The title of the plot, by default None will display the name of the metrics.
+    xlabel : str, optional
+        The label of the x-axis, by default None will display 'Instances'.
+    ylabels : list[str], optional
+        The labels of the y-axis, by default None will display the name of the metrics.
+    nb_subplots_cols : int, optional
+        The number of columns of the subplots, by default 2.
+    marker : str, optional
+        The marker style, by default "o".
+    markersize : int, optional
+        The marker size, by default 3.
+    linestyle : str, optional   
+        The line style, by default "-".
+    lindewidth : int, optional
+        The line width, by default 1.
+
+    Raises
+    ------
+    ValueError
+        If the results are not PrequentialResults.
+
+    Returns
+    -------
+    plt
+        The matplotlib.pyplot object for further customization.
+
+    """
+    # check if the results are all prequential
+    for result in results.values():
+        if not isinstance(result, PrequentialResults):
+            raise ValueError('Only PrequentialResults class are valid')
+
+    # Get the dimensions of the experiment
+    first_result = next(iter(results.values()))
+    num_instances = first_result.max_instances
+
+    if num_instances is not None:
+        window_size = first_result.windowed.metrics_per_window()['instances'][0]
+        num_windows = first_result.windowed.metrics_per_window().shape[0]
+        x_values = [i * window_size for i in range(1, num_windows + 1)]
+
+    nb_metrics = len(metrics)
+    nb_subplots_lines = nb_metrics // nb_subplots_cols 
+    if nb_metrics % nb_subplots_cols:
+        # Add an extra line if there are remaining metrics
+        nb_subplots_lines += 1
+
+    # Control the labels
+    if xlabel is None:
+        xlabel = "# Instances"
+    if ylabels is None or len(ylabels) != nb_metrics:
+        ylabels = metrics
+    if plot_titles is None or len(plot_titles) != nb_metrics:
+        plot_titles = metrics
+
+    # Display each metric in a separate plot    
+    fig, axs = plt.subplots(nb_subplots_lines, 
+                            nb_subplots_cols, 
+                            figsize=(6 * nb_subplots_cols, 4 * nb_subplots_lines),
+                            layout='constrained',
+                            sharex=False)
+    axs = axs.flatten()
+    for ax, metric, ylabel, title in zip(axs, metrics, ylabels, plot_titles):
+        # If the metric exists in the result, plot it
+        for learner_name, result in results.items():
+            if metric in result.windowed.metrics_per_window().columns:
+                ax.plot(x_values if num_instances is not None else result.windowed.metrics_per_window().index, 
+                        result.windowed.metrics_per_window()[metric], 
+                        label=learner_name,
+                        marker=marker,
+                        linestyle=linestyle,
+                        markersize=markersize,
+                        alpha=0.7,
+                        linewidth=lindewidth,
+                        )
+            else:
+                print(f"Column '{metric}' not found in metrics DataFrame for {result['learner']}. Skipping.")
+        ax.set_title(title)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.legend()
+        ax.grid(True)
+        
+    # Hide the unused subplots
+    for i in range(nb_metrics, len(axs)):
+        fig.delaxes(axs[i])
+    
+    return plt
+
 # TODO: Update this function so that it works properly with DriftStreams
 # TODO: Once Schema is updated to provide an easier access to the target name should remove direct access to MOA
 def plot_predictions_vs_ground_truth(*results, ground_truth=None, plot_interval=None, plot_title=None,
